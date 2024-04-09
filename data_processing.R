@@ -1,83 +1,37 @@
 #### Set working directory --------------------------
+setwd("C:\\Users\\USER\\Downloads\\project")
+
+library(dplyr)
 library(tidyverse)
 library(readxl)
 
 #### Load data --------------------------------------
-data <- read_xlsx("입원일수 데이터_(2023년)_최종.xlsx")
+data <- read_xlsx("raw_17666.xlsx")
 
-#### 명세서 우선순위 --------------------------------
-length(unique(data$접수번호))
+#### Select variables -------------------------------
+data1 <- data %>% 
+  select("퇴원일자", "년도", "퇴원과", "성별", "나이", "퇴원병실",
+         "입원일수", "보험유형", "보험보조유형", "입원경로", "퇴원주치의",
+         "ADRG", "청구주상병코드", "CCS", "CCS구분", "분류")
+  # 새로받은 데이터에는 퇴원병실은 없음
 
-data[duplicated(data$접수번호), ]
-
-# 명세서 우선순위를 결정하는 알고리즘 작성
-data_pre1 <- data %>% 
-  mutate(계통 = case_when(
-    as.numeric(substr(질병군,2,3)) <= 49 ~ "외과계",
-    (as.numeric(substr(질병군,2,3)) >= 50 & as.numeric(substr(질병군,2,3)) <= 59) ~ "내과계시술",
-    (as.numeric(substr(질병군,2,3)) >= 60 & as.numeric(substr(질병군,2,3)) <= 99) ~ "내과계"
-  )) %>% 
-  mutate(계통 = factor(계통, levels = c("외과계", "내과계시술", "내과계")))
-
-# 그대로 처리하는 경우
-data_pre2 <- data_pre1 %>% 
-  group_by(접수번호) %>%   # Group by the columns that you want to check for duplicates
-  mutate(Dup = n()) %>%  # Count the number of duplicates
-  ungroup() %>% # Remove grouping
-  filter(Dup == 1)
-
-# 1. 질병군코드 알파벳 뒤 두자리 분류 
-# - 외과계 (1순위)
-# - 내과계시술 (2순위)
-# - 내과계 (3순위)
-
-# 중복되는 경우 별도로 처리
-data_with_counts <- data_pre1 %>% 
-  group_by(접수번호) %>%   # Group by the columns that you want to check for duplicates
-  mutate(Dup = n()) %>%  # Count the number of duplicates
-  ungroup() %>% # Remove grouping
-  filter(Dup >= 2)
-
-data_with_counts <- data_with_counts %>% 
-  arrange(접수번호, 계통, desc(명세서총비용), 입원일자)
-
-# 중복데이터 제거
-data_with_counts2 = data_with_counts[-which(duplicated(data_with_counts$접수번호)),]
-
-# 데이터 다시 결합
-data_pre3 <- rbind(data_pre2, data_with_counts2)
-
-#### AHRQ_CCS_진단군분류 ----------------------------
-ahrq <- read_xlsx("입원일수 데이터_(2023년)_최종.xlsx", sheet = 2) %>% 
-  select(명세서청구주상병코드, 분류)
-
-length(unique(ahrq$명세서청구주상병코드))
-
-ahrq <- na.omit(ahrq)
-
-data1 <- left_join(data_pre3, ahrq, by='명세서청구주상병코드')
-
-#### Classification (7개 진료군) --------------------
+#### Classification ---------------------------------
 data2 <- data1 %>% 
-  mutate(class = case_when(
-    보조유형 == "CA" ~ "암환자",
-    퇴원과 == "OG" & substr(명세서청구주상병코드, 1, 1) == "O" ~ "산과계",
-    if_else(is.na(질병군), FALSE, as.numeric(substr(질병군, 2, 3))) <= 49 ~ "외과계",
-    분류 %in% c("심호흡계", "심혈관계", "신경계") ~ 분류,
-    TRUE ~ "기타내과계"
-  )) %>% 
-  mutate(class = factor(class, levels = c("암환자", "산과계", "외과계", "심호흡계", "심혈관계", "신경계", "기타내과계")))
+  mutate(class = ifelse(보험보조유형=="CA","암환자",
+                        ifelse(퇴원과=="OG"&substr(청구주상병코드,1,1)=="O","산과",
+                               ifelse(as.numeric(substr(ADRG,2,3))<=49,"외과계",
+                                      ifelse(CCS구분=="심호흡계","심호흡계",
+                                             ifelse(CCS구분=="심혈관계","심혈관계",
+                                                    ifelse(CCS구분=="신경계","신경계","기타내과계")))))))
 
-library(skimr)
-skim(data2$class)
-skim(data2$질병군)
+data2$class[is.na(data2$class)] <- "기타내과계"
 
-#### Classification (37개 질병군) --------------------
-data3 <- data2 %>%
-  mutate(disease = substr(data2$질병군,1,3))
-
-# disases 질병군 코드는 missing 461개  
-skim(data3$disease)
+data3 <- data2 %>% 
+  mutate(class = factor(class, levels = c("암환자", "산과", "외과계", "심호흡계", "심혈관계", "신경계", "기타내과계"))) %>% 
+  mutate(disease = substr(data2$ADRG,1,3))
+  
+summary(data3$class)
+summary(data3$disease)
 
 data4 <- data3 %>% 
   mutate(dis = case_when(
@@ -86,11 +40,11 @@ data4 <- data3 %>%
     class == "암환자" & disease == "J63" ~ "J63",
     class == "암환자" & disease == "R63" ~ "R63",
     
-    class == "산과계" & disease == "O04" ~ "O04",
-    class == "산과계" & disease == "O05" ~ "O05",
-    class == "산과계" & disease == "O12" ~ "O12",
-    class == "산과계" & disease == "O62" ~ "O62",
-    class == "산과계" & disease == "O64" ~ "O64",
+    class == "산과" & disease == "O04" ~ "O04",
+    class == "산과" & disease == "O05" ~ "O05",
+    class == "산과" & disease == "O12" ~ "O12",
+    class == "산과" & disease == "O62" ~ "O62",
+    class == "산과" & disease == "O64" ~ "O64",
     
     class == "외과계" & disease == "I19" ~ "I19",
     class == "외과계" & disease == "I18" ~ "I18",
@@ -131,22 +85,22 @@ data4 <- data3 %>%
                                       "E62", "E72", "E73", "E74", "F63",
                                       "F50", "F74", "F76", "F78",
                                       "B68", "B69", "B71", "B77", "B79",
-                                      "G52", "G67", "I68", "I75")))
+                                      "G52", "G67", "I68", "I75"))) %>%  
+  mutate(년도 = factor(년도))
 
-# 30% 만이 37개 질병군에 해당
-skim(data4$dis)
+summary(data4$dis)
+summary(data4$dis)
+summary(data4$년도)
 
 #### Data preprocessing -----------------------------
 data5 <- data4 %>%
   mutate(date = as.Date(as.character(퇴원일자), format = "%Y%m%d")) %>% 
   mutate(month = factor(as.numeric(substr(퇴원일자, 5, 6)))) %>%
-  mutate(년도 = factor(as.numeric(substr(퇴원일자, 1, 4))))  %>% 
   mutate(보험유형 = factor(보험유형, levels = c("건강보험", "의료급여1종", "의료급여2종", "차상위1종", "차상위2종"))) %>% 
   mutate(입원경로 = factor(입원경로)) %>% 
-  mutate(퇴원주치의 = factor(퇴원주치의)) %>%
-  mutate(명세서청구주상병코드 = factor(substr(명세서청구주상병코드,1,3))) %>% 
-  select(접수번호,등록번호,환자명,year = 년도, month, date, class, dis, ICD10 = 명세서청구주상병코드,
-         days = 입원일수, sex = 성별, age = 나이, insurance = 보험유형, adm = 입원경로, 
+  mutate(퇴원주치의 = factor(퇴원주치의)) %>% 
+  select(year = 년도, month, date, class, dis, days = 입원일수, 
+         sex = 성별, age = 나이, insurance = 보험유형, adm = 입원경로, 
          charge = 퇴원주치의, div = 퇴원과, ward = 퇴원병실) %>% 
   mutate(year = factor(year)) %>% 
   mutate(yearmonth = floor_date(date, unit = "month")) %>% 
@@ -155,7 +109,10 @@ data5 <- data4 %>%
   mutate(div = factor(div)) %>% 
   mutate(ward = factor(as.numeric(ward)))
 
-skim(data5)
+data5$age[is.na(data5$age)] <- 0
+
+#summary(data5)
+#skim(data5)
 
 #### For R shiny ------------------------------------
 data5 %>% 
@@ -164,7 +121,13 @@ data5 %>%
             median_days = median(days),
             n = n())
 
-writexl::write_xlsx(data5,"data_2023.xlsx",col_names = TRUE)
+summary(data5$div)
+summary(data5$age)
+
+unique(data5$insurance)
+unique(data5$charge)
+
+writexl::write_xlsx(data5,"data.xlsx",col_names = TRUE)
 
 #### Exercise ---------------------------------------
 
@@ -174,3 +137,39 @@ data5 %>%
   ggplot(aes(x = yearmonth, y = Monthlydays, group = class)) +
   geom_line() +
   labs(title = "Time Series Data", x = "Date", y = "Value")
+
+#### Random data generation -------------------------
+
+set.seed(100)
+
+data5$year <- sample(unique(data5$year), 32992, replace = TRUE)
+
+data5$month <- sample(unique(data5$month), 32992, replace = TRUE)
+
+data5$date <- sample(as.Date("2020-01-01"):as.Date("2022-12-31"), 32992, replace = TRUE)
+
+data5$class <- sample(unique(data5$class), 32992, replace = TRUE)
+
+data5$dis <- sample(unique(data5$dis), 32992, replace = TRUE)
+
+data5$days <- sample(0:100, 32992, replace = TRUE)
+
+data5$sex <- sample(unique(data5$sex), 32992, replace = TRUE)
+
+data5$age <- sample(0:100, 32992, replace = TRUE)
+
+data5$insurance <- sample(unique(data5$insurance), 32992, replace = TRUE)
+
+data5$adm <- sample(unique(data5$adm), 32992, replace = TRUE)
+
+data5$charge <- sample(unique(data5$charge), 32992, replace = TRUE)
+
+data5$div <- sample(unique(data5$div), 32992, replace = TRUE)
+
+data5$ward <- sample(unique(data5$ward), 32992, replace = TRUE)
+
+sample = data5[sample(nrow(data5), 10000, replace = TRUE),]
+
+sample$date = as.Date(sample$date, origin = "1970-01-01")
+
+writexl::write_xlsx(sample,"data.xlsx",col_names = TRUE)

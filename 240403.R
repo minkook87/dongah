@@ -1,15 +1,13 @@
 # 필요한 패키지 로드
 library(tidyverse)
-library(readxl)
 library(openxlsx)
 
-data5 <- read_xlsx("data_2023.xlsx") # 2024년 자료는 여기에 넣습니다
-data6 <- read_xlsx("data_2023.xlsx")
-
+data5 <- read.xlsx("data_2023.xlsx") #2024년 자료는 여기에 넣습니다.
+data6 <- read.xlsx("data_2023.xlsx")
 data5 <- data5 %>%
   mutate(year = factor(year)) %>%
   mutate(month = factor(month)) %>%
-  mutate(date = as.Date(date)) %>%
+  mutate(date = as.Date(date, origin = "1899-12-30")) %>%
   mutate(yearmonth = floor_date(date, unit = "month")) %>% 
   mutate(class = factor(class, levels = c("암환자", "산과계", "외과계", "심호흡계", "심혈관계", "신경계", "기타내과계"))) %>% 
   mutate(dis = factor(dis, levels = c("E67", "G60", "J63", "R63",
@@ -27,42 +25,24 @@ data5 <- data5 %>%
   mutate(div = factor(div)) %>% 
   mutate(ward = factor(ward))
 
-# 진료과별로 엑셀 시트 생성
-wb <- createWorkbook()
-
 # 진료과목 별로 데이터 처리
 unique_divisions <- unique(data5$div)
 
-# 전체 데이터의 자료를 추출 (Total)
-all_summary <- data5 %>%
+# 전체 데이터의 자료를 추출
+all_summary <- data5 %>% 
   summarise(
     all_mean_days = round(mean(days), 1),
     .groups = 'drop'
   )
 
-all_summary_2023 <- data6 %>%
+# 전체 데이터의 자료를 추출
+all_summary_2023 <- data6 %>% 
   summarise(
     all_mean_days_2023 = round(mean(days), 1),
     .groups = 'drop'
   )
 
-# 전체 데이터의 자료를 추출 (진료군)
-class_summary <- data5 %>% 
-  group_by(class) %>% 
-  summarise(
-    class_mean_days = round(mean(days), 1),
-    .groups = 'drop'
-  )
-
-# 2023년 데이터의 자료를 추출 (진료군)
-class_summary_2023 <- data6 %>% 
-  group_by(class) %>% 
-  summarise(
-    class_mean_days_2023 = round(mean(days), 1),
-    .groups = 'drop'
-  )
-
-# 전체 데이터의 자료를 추출 (질병군)
+# 전체 데이터의 자료를 추출
 total_summary <- data5 %>% 
   group_by(class, dis) %>% 
   summarise(
@@ -71,9 +51,7 @@ total_summary <- data5 %>%
   ) %>% 
   filter(!is.na(dis))
 
-total_summary
-
-# 2023년 데이터의 자료를 추출 (질병군)
+# 23년 데이터의 자료를 추출
 total_summary_2023 <- data6 %>% 
   group_by(class, dis) %>% 
   summarise(
@@ -82,7 +60,21 @@ total_summary_2023 <- data6 %>%
   ) %>% 
   filter(!is.na(dis))
 
-total_summary_2023
+# sheet_1의 2023년 자료를 추출
+class_summary <- data5 %>% 
+  group_by(class) %>% 
+  summarise(
+    class_mean_days = round(mean(days), 1),
+    .groups = 'drop'
+  )
+
+# sheet_1의 자료를 추출
+class_summary_2023 <- data6 %>% 
+  group_by(class) %>% 
+  summarise(
+    class_mean_days_2023 = round(mean(days), 1),
+    .groups = 'drop'
+  )
 
 # 질병 코드와 설명 매핑
 disease_descriptions <- tibble(
@@ -102,6 +94,9 @@ disease_descriptions <- tibble(
 
 # 반복문, 과별로 정리
 for (division in unique_divisions) {
+  # 진료과별로 엑셀 시트 생성
+  wb <- createWorkbook()
+  
   # 과별로 데이터 추출
   division_data <- filter(data5, div == division)
   division_data_2023 <- filter(data6, div == division)
@@ -136,13 +131,13 @@ for (division in unique_divisions) {
            all_mean_days_2023,all_div_mean_days_2023,all_diff_mean_days,etc)
   
   #열이름 변경
-  names(combined_stats_t) <- c("대상영역", "조회기간 해당진료과 환자수(명)", "조회기간 해당진료과 입원일수(명)", 
-                              "[참고1] 조회기간 전체진료과 입원일수(일)", "[참고2] 2023년 전체진료과 입원일수(일)", "[참고3] 2023년 해당진료과 입원일수(일)",
-                              "[조회기간 해당진료과]-[참고3] 차이값(일)", "비고(극단값)")
+  names(combined_stats_t) <- c("대상영역", "조회기간\n해당진료과\n환자수(명)", "조회기간\n해당진료과\n입원일수(일)",
+                               "[참고1] 조회기간\n전체진료과\n입원일수(일)", "[참고2]\n2023년 전체진료과\n입원일수(일)", "[참고3] 2023년 해당진료과 입원일수(일)",
+                               "[조회기간 해당진료과]-\n[참고3] 차이값(일)", "비고(극단값)")
   
   #### 진료군 계산 (sheet1) -----
   division_class_summary <- data.frame(class = c("암환자","산과계","외과계","심호흡계","심혈관계",
-                              "신경계","기타내과계"))
+                                                 "신경계","기타내과계"))
   
   division_class_summary <- division_class_summary %>% 
     mutate(class = factor(class, levels=c("암환자","산과계","외과계","심호흡계","심혈관계",
@@ -205,14 +200,105 @@ for (division in unique_divisions) {
   # 열 이름 변경
   combined_stats7 <- data.frame(combined_stats7)
   
-  names(combined_stats7) <- c("대상영역", "조회기간 해당진료과 환자수(명)", "조회기간 해당진료과 입원일수(명)",
-                             "[참고1] 조회기간 전체진료과 입원일수(일)", "[참고2] 2023년 전체진료과 입원일수(일)", "[참고3] 2023년 해당진료과 입원일수(일)",
-                             "[조회기간 해당진료과]-[참고3] 차이값(일)", "비고(극단값)")
+  names(combined_stats7) <- c("대상영역", "조회기간\n해당진료과\n환자수(명)", "조회기간\n해당진료과\n입원일수(일)",
+                              "[참고1] 조회기간\n전체진료과\n입원일수(일)", "[참고2]\n2023년 전체진료과\n입원일수(일)", "[참고3] 2023년 해당진료과 입원일수(일)",
+                              "[조회기간 해당진료과]-\n[참고3] 차이값(일)", "비고(극단값)")
   
   # 중간에 새로운 행을 추가
   combined_stats7 <- rbind(combined_stats_t, combined_stats7)
   
-  #### 질병군 계산 (sheet2) -----
+  combined_stats7 <- combined_stats7 %>% 
+    mutate(대상영역 = factor(c("의과 입원 전체","1) 암환자","2) 산과계","3) 외과계","4) 심호흡계","5) 심혈관계",
+                           "6) 신경계","7) 기타내과계"),
+                         levels = c("의과 입원 전체","1) 암환자","2) 산과계","3) 외과계","4) 심호흡계","5) 심혈관계",
+                                    "6) 신경계","7) 기타내과계")))
+  
+  subjects <- data.frame("진료과" = division)
+  
+  # 진료과별 엑셀 시트 생성
+  addWorksheet(wb, "sheet1")
+  
+  # 진료과별 통계 정보 출력
+  writeDataTable(wb, sheet = "sheet1", subjects, startCol = 2, startRow = 1, tableStyle = "TableStyleLight8")
+  writeData(wb, sheet = 1, x = "<의과 입원 전체 & 7개 진료군별 입원일수>", startRow = 4, startCol = 2)
+  writeDataTable(wb, sheet = "sheet1", combined_stats7, startCol = 2, startRow = 6, tableStyle = "TableStyleMedium7")
+  writeData(wb, sheet = 1, x = paste0("※조회기간: ", year(min(data5$yearmonth)), "년 ", month(min(data5$yearmonth)),
+                                      "월 ~ ", year(max(data5$yearmonth)), "년 ", month(max(data5$yearmonth)), "월"), startRow = 5, startCol = 3)
+  
+  # sheet1 styling
+  conditionalFormatting(wb, sheet = "sheet1", cols = 8, rows = 7:(nrow(combined_stats7) + 6), rule = ">0", style = createStyle(fontColour = "#FF0000"))
+  conditionalFormatting(wb, sheet = "sheet1", cols = 2:9, rows = 6, rule = ">0", style = createStyle(fontColour = "black", textDecoration = "bold"))
+  addStyle(wb, sheet = 1, 
+           style = createStyle(border = "Left", borderColour = "#E26B0A", borderStyle = "thick"), 
+           rows = 6:14, cols = 2)
+  addStyle(wb, sheet = 1, 
+           style = createStyle(border = "Right", borderColour = "#E26B0A", borderStyle = "thick"), 
+           rows = 6:14, cols = 4)
+  addStyle(wb, sheet = 1, 
+           style = createStyle(border = "Bottom", borderColour = "#E26B0A", borderStyle = "thick"), 
+           rows = 14, cols = 2:4, stack = TRUE)
+  addStyle(wb, sheet = 1, 
+           style = createStyle(border = "Top", borderColour = "#E26B0A", borderStyle = "thick"), 
+           rows = 6, cols = 2:4, stack = TRUE)
+  addStyle(wb, sheet = 1, style = createStyle(fgFill = "#D8E4BC"), rows = 6, cols = c(4, 7, 8), stack = TRUE)
+  addStyle(wb, sheet = 1, style = createStyle(textDecoration = "bold"), rows = 4, cols = 2, stack = TRUE)
+  addStyle(wb, sheet = 1, style = createStyle(wrapText = TRUE), rows = 6, cols = 3:8, stack = TRUE)
+  setColWidths(wb, sheet = 1, cols = 8, widths = 21)
+  setColWidths(wb, sheet = 1, cols = 2:7, widths = 18)
+  
+  ####bar plot1
+plot1 <- combined_stats7 %>%
+    pivot_longer(cols = c(`[참고1] 조회기간\n전체진료과\n입원일수(일)`, `[참고2]\n2023년 전체진료과\n입원일수(일)`), 
+                 names_to = "참고", values_to = "입원일수") %>%
+    mutate(참고 = ifelse(참고 == "[참고2]\n2023년 전체진료과\n입원일수(일)", "23년 전체진료과", "조회기간 전체진료과")) %>%
+    ggplot() +
+    geom_bar(aes(x = 대상영역, y = 입원일수, fill = 참고), 
+             stat = "identity", position = position_dodge(width = 0.9), width = 0.8, na.rm = TRUE) +
+    geom_text(aes(x = 대상영역, y = 0, label = 입원일수, group = 참고),
+              color = "white", fontface = "bold", vjust = -3, size = 4, 
+              position = position_dodge(width = 0.9), na.rm = TRUE) +
+    labs(title = "전체진료과 2023년 대비 입원일수 비교 그래프", x = NULL,
+         y = NULL, fill = NULL) +
+    scale_fill_manual(values = c("#17375E", "#953735"), 
+                      labels = c("23년 전체진료과[참고2]", "조회기간 전체진료과[참고1]")) +
+    scale_y_continuous(breaks = seq(0, 10, by = 2)) +
+    theme_minimal() +
+    theme(legend.position = "right",
+          plot.title = element_text(hjust = 0.5, face = "bold"),
+          axis.text.x = element_text(face = "bold"),
+          legend.text = element_text(face = "bold"))
+  
+  print(plot1)
+  insertPlot(wb, sheet = 1, width = 10, height = 2, xy=c(2, 16), fileType = "png",
+             units = "in",dpi = 300)
+  
+  ####bar plot2
+plot2 <- combined_stats7 %>%
+    pivot_longer(cols = c(`[참고3] 2023년 해당진료과 입원일수(일)`, `조회기간\n해당진료과\n입원일수(일)`), 
+                 names_to = "참고", values_to = "입원일수") %>%
+    mutate(참고 = ifelse(참고 == "조회기간\n해당진료과\n입원일수(일)", "23년 해당진료과", "조회기간 해당진료과")) %>%
+    ggplot() +
+    geom_bar(aes(x = 대상영역, y = 입원일수, fill = 참고), 
+             stat = "identity", position = position_dodge(width = 0.9), width = 0.8, na.rm = TRUE) +
+    geom_text(aes(x = factor(대상영역), y = 0, label = 입원일수, group = 참고), 
+              color = "white", fontface = "bold", vjust = -2, size = 4,
+              position = position_dodge(width = 0.9), na.rm = TRUE) +
+    labs(title = "해당진료과 2023년 대비 입원일수 비교 그래프", x = NULL,
+         y = NULL, fill = NULL) +
+    scale_fill_manual(values = c("#4F81BD", "#C00000"), 
+                      labels = c("23년 해당진료과[참고3]", "조회기간 해당진료과")) +
+    scale_y_continuous(breaks = seq(0, 10, by = 2)) +
+    theme_minimal() +
+    theme(legend.position = "right",
+          plot.title = element_text(hjust = 0.5, face = "bold"),
+          axis.text.x = element_text(face = "bold"),
+          legend.text = element_text(face = "bold"))
+  
+  print(plot2)
+  insertPlot(wb, sheet = 1, width = 10, height = 2, xy=c(2, 26), fileType = "png",
+             units = "in",dpi = 300)
+  
+  ####질병군 계산(sheet2)----
   # 과에 해당하는 질병만 추출
   division_summary <- division_data %>%
     group_by(class, dis) %>%
@@ -231,7 +317,6 @@ for (division in unique_divisions) {
     ) %>% 
     filter(!is.na(dis))
   
-  # 담당자(교수)별 통계 계산 2023
   professor_stats_2023 <- division_data_2023 %>%
     group_by(class, dis, charge) %>%
     summarise(
@@ -248,11 +333,10 @@ for (division in unique_divisions) {
       outlier_count = n(),
       outlier_values = paste(days, collapse = ", "),
       .groups = 'drop'
-    ) %>% 
+    )  %>% 
     filter(!is.na(dis))
   
   # division_summary와 professor_stats 합치기
-  # 2023년 자료도 붙인다
   combined_stats <- left_join(division_summary, disease_descriptions, by = c("dis"))
   combined_stats <- left_join(combined_stats, professor_stats, by = c("class", "dis"))
   combined_stats <- left_join(combined_stats, total_summary, by = c("class", "dis"))
@@ -293,39 +377,65 @@ for (division in unique_divisions) {
   # 열 이름 변경
   combined_stats <- data.frame(combined_stats)
   
-  names(combined_stats) <- c("7개 진료군", "37개 질병군", "37개 질병군명", "교수", "조회기간 교수별 환자수(명)", "조회기간 교수별 입원일수(명)",
-                             "[참고1] 조회기간 전체진료과 입원일수(일)", "[참고2] 2023년 전체진료과 입원일수(일)", "[참고3] 2023년 교수별 입원일수(일)",
-                            "[조회기간 교수별]-[참고3] 차이값(일)", "비고(극단값)")
+  names(combined_stats) <- c("7개 진료군", "37개 질병군", "37개 질병군명", "교수", "조회기간\n교수별\n환자수(명)", 
+                             "조회기간\n교수별\n입원일수(명)", "[참고1]\n조회기간\n전체진료과\n입원일수(일)",
+                             "[참고2]\n2023년\n전체진료과\n입원일수(일)", "[참고3]\n2023년\n교수별\n입원일수(일)",
+                             "[조회기간 교수별]-\n[참고3] 차이값(일)", "비고(극단값)")
   
   subjects <- data.frame("진료과" = division)
   
   # 진료과별 엑셀 시트 생성
-  addWorksheet(wb, sheetName = "")
+  addWorksheet(wb, "sheet2")
   
   # 진료과별 통계 정보 출력
-  writeDataTable(wb, sheet = division, subjects, startCol = 2, startRow = 1, tableStyle = "TableStyleMedium7")
-  writeDataTable(wb, sheet = division, combined_stats, startCol = 2, startRow = 4, tableStyle = "TableStyleMedium7")
-  conditionalFormatting(wb, sheet = division, cols = 11, rows = 5:(nrow(combined_stats) + 4), rule = ">0", style = createStyle(fontColour = "#FF0000"))
-
-    # 진료군 별로 테두리 추가
-  num_rows <- sum(data5$div == division)
+  writeDataTable(wb, sheet = "sheet2", subjects, startCol = 2, startRow = 1, tableStyle = "TableStyleLight8")
+  writeData(wb, sheet = 2, x = "<37개 질병군별 교수별 입원일수>", startRow = 2, startCol = 4)
+  writeDataTable(wb, sheet = "sheet2", combined_stats, startCol = 2, startRow = 4, tableStyle = "TableStyleLight14")
+  conditionalFormatting(wb, sheet = "sheet2", cols = 11, rows = 5:ifelse(nrow(combined_stats)>0, nrow(combined_stats)+4, 5), rule = ">0", style = createStyle(fontColour = "#FF0000"))
+  conditionalFormatting(wb, sheet = "sheet2", cols = 2:12, rows = 4, rule = ">0", style = createStyle(fontColour = "black", textDecoration = "bold"))
+  addStyle(wb, sheet = 2, 
+           style = createStyle(border = "Left", borderColour = "#E26B0A", borderStyle = "thick"), 
+           rows = 4:(nrow(combined_stats) + 4), cols = 4)
+  addStyle(wb, sheet = 2, 
+           style = createStyle(border = "Right", borderColour = "#E26B0A", borderStyle = "thick"), 
+           rows = 4:(nrow(combined_stats) + 4), cols = 6)
+  addStyle(wb, sheet = 2, 
+           style = createStyle(border = "Bottom", borderColour = "#E26B0A", borderStyle = "thick"), 
+           rows = (nrow(combined_stats) + 4), cols = 4:6, stack = TRUE)
+  addStyle(wb, sheet = 2, 
+           style = createStyle(border = "Top", borderColour = "#E26B0A", borderStyle = "thick"), 
+           rows = 4, cols = 4:6, stack = TRUE)
+  addStyle(wb, sheet = 2, style = createStyle(fgFill = "#D8E4BC"), rows = 4, cols = c(6, 9, 10), stack = TRUE)
+  addStyle(wb, sheet = 2, style = createStyle(textDecoration = "bold"), rows = 2, cols = 4, stack = TRUE)
+  addStyle(wb, sheet = 2, style = createStyle(wrapText = TRUE), rows = 4, cols = 6:11, stack = TRUE)
+  setColWidths(wb, sheet = 2, cols = 4, widths = 35)
+  setColWidths(wb, sheet = 2, cols = 6:11, widths = 18)
+  # 진료군 별로 테두리 추가
+  num_rows <- nrow(combined_stats)
   num_cols <- ncol(combined_stats)
-  last_division_row <- 4
-  for (i in 2:num_rows) {
-    if (i > 1 && 
-        !is.na(combined_stats[i, "7개 진료군"]) && 
-        !is.na(combined_stats[i - 1, "7개 진료군"]) &&
-        combined_stats[i, "7개 진료군"] != "" &&
-        combined_stats[i, "7개 진료군"] != combined_stats[i - 1, "7개 진료군"]) {
-      # 새로운 진료군이 등장하면 해당 행 바로 위에 테두리 추가
-      for (col in 1:num_cols+1) {
-        style <- createStyle(border = "bottom")
-        addStyle(wb, sheet = division, rows = i + 3, cols = col, style = style)
+  last_division_row <- 3
+  if(nrow(combined_stats)!=0) {
+    for (col in 1:num_cols+1) {
+      style <- createStyle(fgFill = "#FDE9D9")
+      addStyle(wb, sheet = 2, rows = 5, cols = col, style = style, stack = TRUE)
+    }
+    for (i in 2:num_rows) {
+      if (!is.na(combined_stats[i, "37개 질병군"]) && 
+          combined_stats[i, "37개 질병군"] != "" &&
+          combined_stats[i, "37개 질병군"] != combined_stats[i-1, "37개 질병군"]&&
+          nrow(combined_stats)!=1)  {
+        # 새로운 질병군이 등장하면 해당 행 색 변경
+        for (col in 1:num_cols+1) {
+          style <- createStyle(fgFill = "#FDE9D9")
+          addStyle(wb, sheet = 2, rows = i + 4, cols = col, style = style, stack = TRUE)
+        }
+        last_division_row <- i + 3 # 새로운 질병군의 행 인덱스 업데이트
       }
-      last_division_row <- i + 3 # 새로운 진료군의 행 인덱스 업데이트
     }
   }
-}  
-
-# 엑셀 파일 저장
-saveWorkbook(wb, "group_stats.xlsx", overwrite = TRUE)
+  # 엑셀 파일 저장
+  saveWorkbook(wb, paste0(division, ".xlsx"), overwrite = TRUE)
+  removeWorksheet(wb, "sheet1")
+  removeWorksheet(wb, "sheet2")
+  rm(wb)
+}
