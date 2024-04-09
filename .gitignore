@@ -1,5 +1,6 @@
 data/
 ignore/
+out/
 .RData
 .Rhistory
 .Rproj.user

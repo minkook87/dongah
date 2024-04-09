@@ -3,7 +3,8 @@ library(tidyverse)
 library(readxl)
 
 #### Load data --------------------------------------
-data <- read_xlsx("입원일수 데이터_(2023년)_최종.xlsx")
+#data <- read_xlsx("data/입원일수 데이터_(2023년)_최종.xlsx")
+data <- read_xlsx("data/입원일수 데이터_(2024년_1월)_최종.xlsx")
 
 #### 명세서 우선순위 --------------------------------
 length(unique(data$접수번호))
@@ -48,7 +49,7 @@ data_with_counts2 = data_with_counts[-which(duplicated(data_with_counts$접수�
 data_pre3 <- rbind(data_pre2, data_with_counts2)
 
 #### AHRQ_CCS_진단군분류 ----------------------------
-ahrq <- read_xlsx("입원일수 데이터_(2023년)_최종.xlsx", sheet = 2) %>% 
+ahrq <- read_xlsx("data/입원일수 데이터_(2023년)_최종.xlsx", sheet = 2) %>% 
   select(명세서청구주상병코드, 분류)
 
 length(unique(ahrq$명세서청구주상병코드))
@@ -153,7 +154,8 @@ data5 <- data4 %>%
   mutate(sex = factor(sex)) %>% 
   mutate(age = as.numeric(age)) %>% 
   mutate(div = factor(div)) %>% 
-  mutate(ward = factor(as.numeric(ward)))
+  mutate(ward = factor(as.numeric(ward))) %>% 
+  mutate(surgery = factor(ifelse(is.na(data4$수술여부) | data4$수술여부 == "", "N", data4$수술여부)))
 
 skim(data5)
 
