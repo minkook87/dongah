@@ -1,0 +1,5 @@
+data/
+ignore/
+.RData
+.Rhistory
+.Rproj.user
